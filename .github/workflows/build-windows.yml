@@ -20,6 +20,13 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Gerar executável
         run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name PDF-para-Markdown --icon assets/app.ico --add-data "assets/app.ico;assets" --add-data "assets/app.png;assets" --collect-all markitdown --collect-all pdfplumber --collect-all pymupdf --collect-all rapidocr --collect-all onnxruntime desktop_app.py
+      - name: Testar executável empacotado
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP 'pdf-to-markdown-self-test.txt'
+          $process = Start-Process -FilePath 'dist/PDF-para-Markdown.exe' -ArgumentList @('--self-test', $report) -PassThru -Wait -WindowStyle Hidden
+          Get-Content -LiteralPath $report
+          if ($process.ExitCode -ne 0) { throw "O executável falhou no teste de conversão." }
       - name: Disponibilizar executável
         uses: actions/upload-artifact@v4
         with:

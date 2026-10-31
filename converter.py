@@ -123,11 +123,14 @@ def convert_pdf(
                 return ConversionResult(source, None, error="O arquivo não parece ser um PDF válido.")
             pdf.seek(0)
             if make_converter is None:
-                from markitdown import MarkItDown, StreamInfo
+                from markitdown import StreamInfo
+                from markitdown.converters import PdfConverter
 
-                engine = MarkItDown(enable_plugins=False)
+                # The input was already validated as PDF. Calling its converter
+                # directly avoids Magika's format detection and bundled model.
+                engine = PdfConverter()
                 def convert(stream):
-                    return engine.convert_stream(stream, stream_info=StreamInfo(extension=".pdf", mimetype="application/pdf"))
+                    return engine.convert(stream, stream_info=StreamInfo(extension=".pdf", mimetype="application/pdf"))
             else:
                 convert = make_converter
             if ocr_mode == "off":
@@ -163,5 +166,9 @@ def convert_pdf(
             ocr_pages=ocr_count,
         )
     except Exception as exc:
-        return ConversionResult(source, None, error=f"Falha na conversão: {type(exc).__name__}. Verifique se o PDF está íntegro e sem senha.")
+        detail = str(exc).strip()
+        message = f"Falha na conversão: {type(exc).__name__}"
+        if detail:
+            message += f": {detail[:300]}"
+        return ConversionResult(source, None, error=message)
 

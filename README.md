@@ -19,7 +19,9 @@ Os PDFs e o OCR são processados localmente. O aplicativo não os envia a servi�
 
 Dê dois cliques em `build_exe.bat`. Ele instala o PyInstaller no ambiente virtual e gera `dist\PDF-para-Markdown.exe`, incluindo os modelos de OCR. O `.exe` pode ser aberto sem Python instalado na máquina de destino. O arquivo será maior por conter os modelos e as bibliotecas de inferência.
 
-O [workflow do GitHub Actions](.github/workflows/build-windows.yml) também testa a conversão real, gera o `.exe` no Windows e o disponibiliza como artefato da execução.
+O [workflow do GitHub Actions](.github/workflows/build-windows.yml) testa a conversão real, gera o `.exe`, executa uma conversão dentro do programa empacotado e o disponibiliza como artefato da execução.
+
+Se você usa um `.exe` baixado anteriormente, baixe o artefato da execução mais recente para receber as correções. A mensagem `MagikaError` em versões anteriores vinha da detecção de formato no pacote; o programa agora usa diretamente o conversor de PDF do MarkItDown. Para relatar outra falha, selecione o arquivo com status **Erro** e clique em **Copiar erro**.
 
 O ícone da janela e do executável fica em `assets/`. Para recriá-lo após uma alteração no desenho, execute `python tools/generate_icon.py` com Pillow instalado.
 

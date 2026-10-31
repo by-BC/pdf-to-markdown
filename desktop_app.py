@@ -236,17 +236,17 @@ class DesktopApp(tk.Tk):
         selection = self.tree.selection()
         self.remove_button.configure(state="normal" if selection and not self.busy else "disabled")
         if not selection:
-            self.copy_button.configure(state="disabled")
+            self.copy_button.configure(state="disabled", text="Copiar")
             self._set_preview("Depois da conversão, selecione um PDF na lista para ver o Markdown aqui.")
             return
         result = self.results.get(self.files[int(selection[0])])
         if result:
-            self.copy_button.configure(state="normal" if result.output else "disabled")
+            self.copy_button.configure(state="normal", text="Copiar erro" if result.error else "Copiar")
             self._set_preview(result.error or result.markdown or result.warning or "Markdown vazio.")
             if result.warning and result.markdown:
                 self.status.set(result.warning)
         else:
-            self.copy_button.configure(state="disabled")
+            self.copy_button.configure(state="disabled", text="Copiar")
             self._set_preview("Este PDF está pronto. Clique em “Converter PDFs” na barra inferior.")
 
     def _start(self):
@@ -304,10 +304,10 @@ class DesktopApp(tk.Tk):
         selection = self.tree.selection()
         if selection:
             result = self.results.get(self.files[int(selection[0])])
-            if result and result.output:
+            if result:
                 self.clipboard_clear()
-                self.clipboard_append(result.markdown)
-                self.status.set("Markdown copiado para a área de transferência.")
+                self.clipboard_append(result.error or result.markdown)
+                self.status.set("Mensagem de erro copiada." if result.error else "Markdown copiado para a área de transferência.")
 
     def _open_folder(self):
         folder = Path(self.output_dir.get().strip())
@@ -318,5 +318,9 @@ class DesktopApp(tk.Tk):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--self-test":
+        from packaged_smoke import run
+
+        raise SystemExit(run(Path(sys.argv[2])))
     DesktopApp().mainloop()
 
