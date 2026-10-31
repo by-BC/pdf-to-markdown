@@ -10,8 +10,8 @@ Aplicativo de janela para Windows que converte PDFs em arquivos `.md` usando o [
    - **Automático:** usa OCR em páginas com pouco ou nenhum texto selecionável; mantém o MarkItDown nas demais.
    - **Forçar OCR:** reconhece todas as páginas como imagem.
    - **Desativado:** usa somente a conversão padrão do MarkItDown.
-4. Clique em **Converter PDFs**.
-5. Selecione um arquivo convertido para visualizar o Markdown. Use **Abrir pasta** para acessar os `.md`.
+4. Clique no botão azul **Converter PDFs**, sempre visível na barra inferior da janela. Ele é habilitado depois que você adiciona um PDF.
+5. Os arquivos `.md` são salvos automaticamente na pasta indicada. Selecione um PDF na lista para visualizar o Markdown e use **Abrir pasta de destino** para acessar os arquivos.
 
 Os PDFs e o OCR são processados localmente. O aplicativo não os envia a serviços externos e não guarda cópias deles. Um arquivo `.md` existente nunca é sobrescrito: o próximo ganha um sufixo numérico.
 
@@ -20,6 +20,8 @@ Os PDFs e o OCR são processados localmente. O aplicativo não os envia a servi�
 Dê dois cliques em `build_exe.bat`. Ele instala o PyInstaller no ambiente virtual e gera `dist\PDF-para-Markdown.exe`, incluindo os modelos de OCR. O `.exe` pode ser aberto sem Python instalado na máquina de destino. O arquivo será maior por conter os modelos e as bibliotecas de inferência.
 
 O [workflow do GitHub Actions](.github/workflows/build-windows.yml) também testa a conversão real, gera o `.exe` no Windows e o disponibiliza como artefato da execução.
+
+O ícone da janela e do executável fica em `assets/`. Para recriá-lo após uma alteração no desenho, execute `python tools/generate_icon.py` com Pillow instalado.
 
 ## Limitações
 
