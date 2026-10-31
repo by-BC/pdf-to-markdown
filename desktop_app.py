@@ -32,6 +32,7 @@ class DesktopApp(tk.Tk):
         self.events: queue.Queue = queue.Queue()
         self.busy = False
         self.output_dir = tk.StringVar(value=str(Path.home() / "Documents" / "Markdown"))
+        self.ocr_choice = tk.StringVar(value="Automático — páginas sem texto")
         self.status = tk.StringVar(value="Adicione PDFs para começar.")
         self._build()
         self.after(100, self._poll)
@@ -94,6 +95,16 @@ class DesktopApp(tk.Tk):
         self.folder_entry.pack(side="left", fill="x", expand=True, ipady=9)
         self.folder_button = self._button(folder, "Escolher", self._choose_folder)
         self.folder_button.pack(side="left", padx=(8, 0))
+        tk.Label(left, text="RECONHECIMENTO DE TEXTO (OCR)", bg=WHITE, fg=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(16, 7))
+        self.ocr_selector = ttk.Combobox(
+            left,
+            textvariable=self.ocr_choice,
+            values=("Automático — páginas sem texto", "Forçar OCR em todas as páginas", "Desativado — apenas texto selecionável"),
+            state="readonly",
+            font=("Segoe UI", 9),
+        )
+        self.ocr_selector.pack(fill="x")
+        tk.Label(left, text="Automático preserva o texto digital e lê páginas digitalizadas.", bg=WHITE, fg=MUTED, font=("Segoe UI", 8), wraplength=420, justify="left").pack(anchor="w", pady=(6, 0))
         self.convert_button = self._button(left, "Converter PDFs  →", self._start, primary=True)
         self.convert_button.pack(fill="x", pady=(18, 0))
 
@@ -101,7 +112,7 @@ class DesktopApp(tk.Tk):
         tk.Label(right, text="Selecione um arquivo convertido para visualizar", bg=WHITE, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(3, 17))
         self.preview = tk.Text(right, wrap="word", bg="#F7FBF9", fg=INK, relief="flat", padx=16, pady=15, font=("Consolas", 10), state="disabled", highlightthickness=1, highlightbackground=BORDER)
         self.preview.pack(fill="both", expand=True)
-        self._set_preview("O Markdown convertido aparecerá aqui.\n\nSe o PDF contiver apenas imagens, pode ser necessário usar OCR.")
+        self._set_preview("O Markdown convertido aparecerá aqui.\n\nO OCR automático reconhece o texto de páginas digitalizadas.")
         bottom = tk.Frame(right, bg=WHITE)
         bottom.pack(fill="x", pady=(15, 0))
         self.copy_button = self._button(bottom, "Copiar Markdown", self._copy)
@@ -144,7 +155,7 @@ class DesktopApp(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         for index, path in enumerate(self.files):
             result = self.results.get(path)
-            status = "Erro" if result and result.error else "Concluído" if result else "Pendente"
+            status = "Erro" if result and result.error else "OCR" if result and result.ocr_pages else "Concluído" if result else "Pendente"
             self.tree.insert("", "end", iid=str(index), text=path.name, values=(status,))
         self.status.set(f"{len(self.files)} PDF(s) selecionado(s)." if self.files else "Adicione PDFs para começar.")
 
@@ -161,6 +172,8 @@ class DesktopApp(tk.Tk):
         result = self.results.get(self.files[int(selection[0])])
         if result:
             self._set_preview(result.error or result.markdown or result.warning or "Markdown vazio.")
+            if result.warning and result.markdown:
+                self.status.set(result.warning)
         else:
             self._set_preview("Arquivo ainda não convertido.")
 
@@ -175,18 +188,25 @@ class DesktopApp(tk.Tk):
             messagebox.showerror("Pasta inválida", "Escolha uma pasta de destino.", parent=self)
             return
         self.busy = True
+        modes = {
+            "Automático — páginas sem texto": "auto",
+            "Forçar OCR em todas as páginas": "force",
+            "Desativado — apenas texto selecionável": "off",
+        }
+        ocr_mode = modes[self.ocr_choice.get()]
         self.results.clear()
         self._render_files()
         self.progress.configure(maximum=len(self.files), value=0)
         for button in (self.add_button, self.remove_button, self.folder_button, self.convert_button):
             button.configure(state="disabled")
         self.folder_entry.configure(state="disabled")
+        self.ocr_selector.configure(state="disabled")
         self.status.set("Convertendo PDFs...")
-        threading.Thread(target=self._worker, args=(list(self.files), folder), daemon=True).start()
+        threading.Thread(target=self._worker, args=(list(self.files), folder, ocr_mode), daemon=True).start()
 
-    def _worker(self, files: list[Path], folder: Path):
+    def _worker(self, files: list[Path], folder: Path, ocr_mode: str):
         for index, path in enumerate(files, start=1):
-            self.events.put(("result", convert_pdf(path, folder), index))
+            self.events.put(("result", convert_pdf(path, folder, ocr_mode=ocr_mode), index))
         self.events.put(("done", None, len(files)))
 
     def _poll(self):
@@ -204,8 +224,10 @@ class DesktopApp(tk.Tk):
                     for button in (self.add_button, self.remove_button, self.folder_button, self.convert_button):
                         button.configure(state="normal")
                     self.folder_entry.configure(state="normal")
+                    self.ocr_selector.configure(state="readonly")
                     successes = sum(result.output is not None for result in self.results.values())
-                    self.status.set(f"Concluído: {successes} de {count} PDF(s) convertido(s).")
+                    ocr_pages = sum(result.ocr_pages for result in self.results.values())
+                    self.status.set(f"Concluído: {successes} de {count} PDF(s) convertido(s). OCR em {ocr_pages} página(s).")
         except queue.Empty:
             pass
         self.after(100, self._poll)

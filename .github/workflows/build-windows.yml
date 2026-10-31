@@ -1,0 +1,29 @@
+name: Testar e gerar EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Instalar dependências
+        run: python -m pip install -r requirements.txt "pyinstaller>=6,<7"
+      - name: Testar conversão e OCR
+        run: python -m unittest discover -s tests -v
+      - name: Gerar executável
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name PDF-para-Markdown --collect-all markitdown --collect-all pdfplumber --collect-all pymupdf --collect-all rapidocr --collect-all onnxruntime desktop_app.py
+      - name: Disponibilizar executável
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-para-Markdown-Windows
+          path: dist/PDF-para-Markdown.exe
+          if-no-files-found: error
+

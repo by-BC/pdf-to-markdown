@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+import io
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,82 @@ class ConversionResult:
     markdown: str = ""
     error: str | None = None
     warning: str | None = None
+    ocr_pages: int = 0
+
+
+@dataclass(frozen=True)
+class PdfPage:
+    text: str
+    pdf_bytes: Callable[[], bytes]
+    image_bytes: Callable[[], bytes]
+
+
+def iter_pdf_pages(source: Path) -> Iterator[PdfPage]:
+    """Yield one page at a time, keeping only the current page in memory."""
+    import pymupdf
+
+    document = pymupdf.open(source)
+    try:
+        for number in range(len(document)):
+            page = document[number]
+
+            def page_pdf(index=number):
+                single = pymupdf.open()
+                try:
+                    single.insert_pdf(document, from_page=index, to_page=index)
+                    return single.tobytes()
+                finally:
+                    single.close()
+
+            def page_image(current=page):
+                return current.get_pixmap(dpi=200, alpha=False).tobytes("png")
+
+            yield PdfPage(page.get_text("text"), page_pdf, page_image)
+    finally:
+        document.close()
+
+
+def make_ocr_reader() -> Callable[[bytes], list[str]]:
+    from rapidocr import RapidOCR
+
+    engine = RapidOCR(params={"Det.lang_type": "pt", "Rec.lang_type": "pt"})
+
+    def recognize(image: bytes) -> list[str]:
+        result = engine(image)
+        return list(result.txts) if result.txts is not None else []
+
+    return recognize
+
+
+def extract_with_ocr(
+    source: Path,
+    convert_stream: Callable,
+    mode: str,
+    pages: Callable[[Path], Iterator[PdfPage]] = iter_pdf_pages,
+    ocr_factory: Callable[[], Callable[[bytes], list[str]]] = make_ocr_reader,
+) -> tuple[str, int, int]:
+    """Keep page order while OCRing scanned pages and converting digital pages."""
+    if mode not in {"auto", "force"}:
+        raise ValueError("Modo de OCR inválido")
+    chunks = []
+    ocr_count = 0
+    empty_count = 0
+    recognize = None
+    for number, page in enumerate(pages(source), start=1):
+        use_ocr = mode == "force" or len(page.text.strip()) < 24
+        if use_ocr:
+            if recognize is None:
+                recognize = ocr_factory()
+            lines = recognize(page.image_bytes())
+            content = "\n".join(str(line) for line in lines if str(line).strip()).strip()
+            ocr_count += 1
+            if not content:
+                empty_count += 1
+        else:
+            content = convert_stream(io.BytesIO(page.pdf_bytes())).markdown or ""
+        if content.strip():
+            chunks.append(f"<!-- Página {number} -->\n\n{content.strip()}")
+    return "\n\n".join(chunks) + ("\n" if chunks else ""), ocr_count, empty_count
 
 
 def safe_stem(name: str) -> str:
@@ -25,12 +102,21 @@ def safe_stem(name: str) -> str:
     return stem[:100]
 
 
-def convert_pdf(source: Path, output_dir: Path, make_converter: Callable | None = None) -> ConversionResult:
+def convert_pdf(
+    source: Path,
+    output_dir: Path,
+    make_converter: Callable | None = None,
+    ocr_mode: str = "auto",
+    pages: Callable[[Path], Iterator[PdfPage]] = iter_pdf_pages,
+    ocr_factory: Callable[[], Callable[[bytes], list[str]]] = make_ocr_reader,
+) -> ConversionResult:
     """Convert one user-chosen PDF and create a new .md without overwriting."""
     source = Path(source)
     output_dir = Path(output_dir)
     if source.suffix.lower() != ".pdf":
         return ConversionResult(source, None, error="O arquivo precisa ter extensão .pdf.")
+    if ocr_mode not in {"off", "auto", "force"}:
+        return ConversionResult(source, None, error="Modo de OCR inválido.")
     try:
         with source.open("rb") as pdf:
             if pdf.read(5) != b"%PDF-":
@@ -40,10 +126,16 @@ def convert_pdf(source: Path, output_dir: Path, make_converter: Callable | None 
                 from markitdown import MarkItDown, StreamInfo
 
                 engine = MarkItDown(enable_plugins=False)
-                result = engine.convert_stream(pdf, stream_info=StreamInfo(extension=".pdf", mimetype="application/pdf"))
+                def convert(stream):
+                    return engine.convert_stream(stream, stream_info=StreamInfo(extension=".pdf", mimetype="application/pdf"))
             else:
-                result = make_converter(pdf)
-            markdown = result.markdown or ""
+                convert = make_converter
+            if ocr_mode == "off":
+                markdown = convert(pdf).markdown or ""
+                ocr_count = 0
+                empty_count = 0
+            else:
+                markdown, ocr_count, empty_count = extract_with_ocr(source, convert, ocr_mode, pages, ocr_factory)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         stem = safe_stem(source.name)
@@ -63,7 +155,12 @@ def convert_pdf(source: Path, output_dir: Path, make_converter: Callable | None 
             source,
             target,
             markdown,
-            warning="Nenhum texto foi extraído. Este PDF pode precisar de OCR." if not markdown.strip() else None,
+            warning=(
+                f"OCR não encontrou texto em {empty_count} página(s)." if empty_count
+                else "Nenhum texto foi extraído. Tente forçar OCR em todas as páginas." if not markdown.strip()
+                else None
+            ),
+            ocr_pages=ocr_count,
         )
     except Exception as exc:
         return ConversionResult(source, None, error=f"Falha na conversão: {type(exc).__name__}. Verifique se o PDF está íntegro e sem senha.")

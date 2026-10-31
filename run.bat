@@ -5,9 +5,9 @@ if not exist ".venv\Scripts\pythonw.exe" (
     py -3 -m venv .venv
     if errorlevel 1 goto error
 )
-".venv\Scripts\python.exe" -c "import markitdown" >nul 2>&1
+".venv\Scripts\python.exe" -c "import markitdown, rapidocr, onnxruntime, pymupdf" >nul 2>&1
 if errorlevel 1 (
-    echo Instalando Microsoft MarkItDown...
+    echo Instalando MarkItDown e OCR local...
     ".venv\Scripts\python.exe" -m pip install -r requirements.txt
     if errorlevel 1 goto error
 )
